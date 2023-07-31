@@ -1,0 +1,16 @@
+pipeline {
+    agent any
+
+    stages {
+        stage("Build") {
+            steps {
+                echo "========== BUILD STAGE =========="
+
+                echo "Create env file"
+                sh "cp .env.example .env"
+                sh "sed -i 's/DB_HOST=/DB_HOST=host.docker.internal/g' .env"
+                sh "cat .env"
+            }
+        }
+    }
+}
