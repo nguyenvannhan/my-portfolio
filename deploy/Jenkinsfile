@@ -17,11 +17,12 @@ pipeline {
                 echo "Setup ENV file"
                 sh "cp .env.prod .env"
                 sh "sed -i 's/JENKIN_CRE_APP_KEY/${APP_KEY}/g' .env"
-                sh "cat .env"
 
                 echo "Zip Source"
                 sh 'rm -f my-portfolio.zip'
-                sh 'zip -r my-portfolio.zip ./ -x \'*.git*\''
+                script {
+                    zip zipFile: 'my-portfolio.zip', exclude: '*.git*'
+                }
             }
         }
 
@@ -29,7 +30,8 @@ pipeline {
             steps {
                 echo "========== DEPLOY STAGE =========="
                 sshagent(credentials: ["${SSH_ID}"]) {
-                    sh "scp my-portfolio.zip root@${REMOTE_IP}:${REMOTE_DIR}"
+                    sh "ssh -o StrictHostKeyChecking=no root@${REMOTE_IP} \"ls -la\""
+                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null my-portfolio.zip root@${REMOTE_IP}:${REMOTE_DIR}"
 
                     sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && rm -rf my-portfolio-tmp && unzip my-portfolio.zip -d my-portfolio-tmp\""
                     sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR}/my-portfolio-tmp && docker build -f ./docker/php/Dockerfile -t my-portfolio-image\""
