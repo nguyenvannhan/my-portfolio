@@ -1,0 +1,48 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_KEY = credentials('PORTFOLIO_APP_KEY')
+
+        SSH_ID = 'VPS_AZDIGI_SSH'
+        REMOTE_IP = '116.118.49.239'
+        REMOTE_DIR = '/var/www/html/'
+    }
+
+    stages {
+        stage("Build") {
+            steps {
+                echo "========== BUILD STAGE =========="
+
+                echo "Setup ENV file"
+                sh "cp .env.prod .env"
+                sh "sed -i 's/JENKIN_CRE_APP_KEY/${APP_KEY}/g' .env"
+
+                echo "Zip Source"
+                sh 'rm -f my-portfolio.zip'
+                script {
+                    zip zipFile: 'my-portfolio.zip', exclude: '*.git*'
+                }
+            }
+        }
+
+        stage("Deploy") {
+            steps {
+                echo "========== DEPLOY STAGE =========="
+                sshagent(credentials: ["${SSH_ID}"]) {
+                    sh "ssh -o StrictHostKeyChecking=no root@${REMOTE_IP} \"ls -la\""
+                    sh "scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null my-portfolio.zip root@${REMOTE_IP}:${REMOTE_DIR}"
+
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && rm -rf my-portfolio-tmp && unzip my-portfolio.zip -d my-portfolio-tmp\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR}/my-portfolio-tmp && docker build -f ./docker/php/Dockerfile -t my-portfolio-image\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR}/my-portfolio && docker stop my-portfolio-container && docker rm my-portfolio-container\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && mv my-portfolio-tmp my-portfolio\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && mv my-portfolio && docker run my-portfolio-image -v ${REMOTE_DIR}/my-portfolio:/var/www/html -p 9001:9000 --name my-portfolio-container\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && rm -f my-portfolio.zip\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"cd ${REMOTE_DIR} && cp deploy/nginx.conf /etc/nginx/conf.d/my-portfolio.conf\""
+                    sh "ssh -o StrictHostKeyChecking=no root@$REMOTE_IP \"nginx reload\""
+                }
+            }
+        }
+    }
+}
